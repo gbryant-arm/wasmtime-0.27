@@ -9,6 +9,7 @@ use std::{
     path::{Component, PathBuf},
     process,
 };
+use std::time::SystemTime;
 use structopt::{clap::AppSettings, StructOpt};
 use wasmtime::{Engine, Func, Linker, Module, Store, Trap, Val, ValType};
 use wasmtime_wasi::sync::{Dir, Wasi, WasiCtxBuilder};
@@ -134,6 +135,7 @@ impl RunCommand {
     /// Executes the command.
     pub fn execute(&self) -> Result<()> {
         self.common.init_logging();
+        println!("++++++ {}: execute() time0", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
 
         let mut config = self.common.config(None)?;
         if self.wasm_timeout.is_some() {
@@ -148,6 +150,7 @@ impl RunCommand {
 
         let mut linker = Linker::new(&store);
         linker.allow_unknown_exports(self.allow_unknown_exports);
+        println!("++++++ {}: execute() time1 before populate_with_wasi", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
 
         populate_with_wasi(
             &mut linker,
@@ -156,6 +159,7 @@ impl RunCommand {
             &self.vars,
             &self.common.wasi_modules.unwrap_or(WasiModules::default()),
         )?;
+        println!("++++++ {}: execute() time1 after populate_with_wasi", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
 
         // Load the preload wasm modules.
         for (name, path) in self.preloads.iter() {
@@ -207,6 +211,7 @@ impl RunCommand {
                 return Err(e);
             }
         }
+        println!("++++++ {}: time4", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
 
         Ok(())
     }
@@ -257,6 +262,7 @@ impl RunCommand {
     }
 
     fn load_main_module(&self, linker: &mut Linker) -> Result<()> {
+        println!("++++++ {}: load_main_module time1", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
         if let Some(timeout) = self.wasm_timeout {
             let handle = linker.store().interrupt_handle()?;
             thread::spawn(move || {
@@ -264,21 +270,26 @@ impl RunCommand {
                 handle.interrupt();
             });
         }
+        println!("++++++ {}: time2", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
 
         // Read the wasm module binary either as `*.wat` or a raw binary.
         // Use "" as a default module name.
         let module = Module::from_file(linker.store().engine(), &self.module)?;
+        println!("++++++ {}: time3 after Module::from_file", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
         linker
             .module("", &module)
             .context(format!("failed to instantiate {:?}", self.module))?;
 
+        println!("++++++ {}: time3 after linker", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
         // If a function to invoke was given, invoke it.
-        if let Some(name) = self.invoke.as_ref() {
+        let x = if let Some(name) = self.invoke.as_ref() {
             self.invoke_export(linker, name)
         } else {
             let func = linker.get_default("")?;
             self.invoke_func(func, None)
-        }
+        };
+        println!("++++++ {}: time4 after invoking entry point", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
+        x
     }
 
     fn invoke_export(&self, linker: &Linker, name: &str) -> Result<()> {

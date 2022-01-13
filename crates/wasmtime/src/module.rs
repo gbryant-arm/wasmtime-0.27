@@ -13,6 +13,7 @@ use wasmtime_cache::ModuleCacheEntry;
 use wasmtime_environ::entity::PrimaryMap;
 use wasmtime_environ::wasm::ModuleIndex;
 use wasmtime_jit::{CompilationArtifacts, CompiledModule, TypeTables};
+use std::time::SystemTime;
 
 mod registry;
 mod serialization;
@@ -179,8 +180,10 @@ impl Module {
     /// ```
     pub fn new(engine: &Engine, bytes: impl AsRef<[u8]>) -> Result<Module> {
         let bytes = bytes.as_ref();
+        println!("++++++ {}: time0", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
         #[cfg(feature = "wat")]
         let bytes = wat::parse_bytes(bytes)?;
+        println!("++++++ {}: time1", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
         Self::from_binary(engine, &bytes)
     }
 
@@ -286,6 +289,7 @@ impl Module {
                 target
             );
         }
+        println!("++++++ {}: from_binary time0", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
 
         // FIXME: we may want to validate that the ISA flags in the config match those that
         // would be inferred for the host, otherwise the JIT might produce unrunnable code
@@ -302,9 +306,11 @@ impl Module {
                 .get_data((engine.compiler(), binary), |(compiler, binary)| {
                     CompilationArtifacts::build(compiler, binary, USE_PAGED_MEM_INIT)
                 })?;
+                println!("++++++ {}: from_binary feature cache enabled", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
             } else {
                 let (main_module, artifacts, types) =
                     CompilationArtifacts::build(engine.compiler(), binary, USE_PAGED_MEM_INIT)?;
+                println!("++++++ {}: from_binary no feature cache", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
             }
         };
 
@@ -313,8 +319,11 @@ impl Module {
             engine.compiler().isa(),
             &*engine.config().profiler,
         )?;
+        println!("++++++ {}: from_binary time3", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
 
-        Self::from_parts(engine, modules, main_module, Arc::new(types), &[])
+        let x = Self::from_parts(engine, modules, main_module, Arc::new(types), &[]);
+        println!("++++++ {}: from_binary time4", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros() as f64 / 1000.0);
+        x
     }
 
     /// Deserializes an in-memory compiled module previously created with
